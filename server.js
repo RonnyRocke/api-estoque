@@ -255,7 +255,6 @@ app.get('/emprestimos/:id', async (req, res) => {
                 idemprestimo AS id,
                 nomeusuario AS "NomeUsuario",
                 filial AS "Filial",
-                dataemprestimo AS "DataEmprestimo",
                 status AS "Status"
              FROM emprestimos
              WHERE idperiferico = $1
