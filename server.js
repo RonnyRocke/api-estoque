@@ -242,3 +242,29 @@ app.delete('/perifericos/:id', async (req, res) => {
         res.status(500).send(err.message);
     }
 });
+
+// ===============================
+// LISTAR EMPRÉSTIMOS POR PERIFÉRICO
+// ===============================
+app.get('/emprestimos/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await pool.query(
+            `SELECT 
+                idemprestimo AS id,
+                nomeusuario AS "NomeUsuario",
+                filial AS "Filial",
+                dataemprestimo AS "DataEmprestimo",
+                status AS "Status"
+             FROM emprestimos
+             WHERE idperiferico = $1
+             ORDER BY dataemprestimo DESC`,
+            [id]
+        );
+
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
+});
