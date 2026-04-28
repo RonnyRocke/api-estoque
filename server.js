@@ -1,69 +1,55 @@
-
 process.on('unhandledRejection', err => {
     console.error('Erro não tratado:', err);
 });
 
 const express = require('express');
-const sql = require('mssql');
+const { Pool } = require('pg');
 const cors = require('cors');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-const config = {
-    user: 'estoque_app',
-    password: '123456',
-    server: '192.168.0.7',
-    port: 1433,
-    database: 'Desenvolvimento_Ronald',
-    options: {
-        encrypt: false,
-        trustServerCertificate: true
+// 🔥 CONEXÃO NEON
+const pool = new Pool({
+    connectionString: 'COLE_AQUI_SUA_STRING_DO_NEON',
+    ssl: {
+        rejectUnauthorized: false
     }
-};
-
-// 🔹 CONEXÃO GLOBAL (SEM DERRUBAR A API)
-sql.connect(config)
-    .then(() => {
-        console.log('Conectado ao SQL Server');
-    })
-    .catch(err => {
-        console.error('Erro ao conectar no banco:', err.message);
-    });
+});
 
 // ===============================
-// 🔹 LISTAR PERIFERICOS
+// TESTE
+// ===============================
+app.get('/', (req, res) => {
+    res.send('API ONLINE 🚀');
+});
+
+// ===============================
+// LISTAR
 // ===============================
 app.get('/perifericos', async (req, res) => {
     try {
-        const result = await sql.query('SELECT * FROM perifericosDisponiveis');
-        res.json(result.recordset);
+        const result = await pool.query('SELECT * FROM perifericosDisponiveis');
+        res.json(result.rows);
     } catch (err) {
         res.status(500).send(err.message);
     }
 });
 
 // ===============================
-// 🔹 INSERIR
+// INSERIR
 // ===============================
 app.post('/perifericos', async (req, res) => {
     const { tipo, fabricante, total, observacao, operador } = req.body;
 
     try {
-        const request = new sql.Request();
-
-        request.input('tipo', sql.VarChar, tipo);
-        request.input('fabricante', sql.VarChar, fabricante);
-        request.input('total', sql.Int, total);
-        request.input('obs', sql.VarChar, observacao);
-        request.input('operador', sql.VarChar, operador);
-
-        await request.query(`
-            INSERT INTO perifericosDisponiveis
-            (TIPO, FABRICANTE, QUANT_TOTAL, QUANT_EMPRESTADO, OBSERVACAO, STATUS, OPERADOR)
-            VALUES (@tipo, @fabricante, @total, 0, @obs, 'DISPONÍVEL', @operador)
-        `);
+        await pool.query(
+            `INSERT INTO perifericosDisponiveis 
+            (tipo, fabricante, quant_total, quant_emprestado, observacao, status, operador)
+            VALUES ($1, $2, $3, 0, $4, 'DISPONÍVEL', $5)`,
+            [tipo, fabricante, total, observacao, operador]
+        );
 
         res.send('Inserido com sucesso');
     } catch (err) {
@@ -72,32 +58,23 @@ app.post('/perifericos', async (req, res) => {
 });
 
 // ===============================
-// 🔹 ATUALIZAR
+// ATUALIZAR
 // ===============================
 app.put('/perifericos/:id', async (req, res) => {
-    const id = req.params.id;
+    const { id } = req.params;
     const { tipo, fabricante, total, observacao, operador } = req.body;
 
     try {
-        const request = new sql.Request();
-
-        request.input('id', sql.Int, id);
-        request.input('tipo', sql.VarChar, tipo);
-        request.input('fabricante', sql.VarChar, fabricante);
-        request.input('total', sql.Int, total);
-        request.input('obs', sql.VarChar, observacao);
-        request.input('operador', sql.VarChar, operador);
-
-        await request.query(`
-            UPDATE perifericosDisponiveis
-            SET
-                TIPO = @tipo,
-                FABRICANTE = @fabricante,
-                QUANT_TOTAL = @total,
-                OBSERVACAO = @obs,
-                OPERADOR = @operador
-            WHERE ID = @id
-        `);
+        await pool.query(
+            `UPDATE perifericosDisponiveis
+             SET tipo = $1,
+                 fabricante = $2,
+                 quant_total = $3,
+                 observacao = $4,
+                 operador = $5
+             WHERE id = $6`,
+            [tipo, fabricante, total, observacao, operador, id]
+        );
 
         res.send('Atualizado com sucesso');
     } catch (err) {
@@ -106,73 +83,60 @@ app.put('/perifericos/:id', async (req, res) => {
 });
 
 // ===============================
-// 🔴 DELETE COM BACKUP
+// EMPRESTAR
 // ===============================
-app.delete('/perifericos/:id', async (req, res) => {
-    const id = req.params.id;
+app.post('/emprestar', async (req, res) => {
+    const { id, usuario, filial } = req.body;
 
     try {
-        const check = await sql.query(`
-            SELECT QUANT_EMPRESTADO 
-            FROM perifericosDisponiveis 
-            WHERE ID = ${id}
-        `);
+        await pool.query(
+            `INSERT INTO emprestimos
+            (idperiferico, nomeusuario, dataemprestimo, filial, status)
+            VALUES ($1, $2, CURRENT_TIMESTAMP, $3, 'EMPRESTADO')`,
+            [id, usuario, filial]
+        );
 
-        if (check.recordset[0].QUANT_EMPRESTADO > 0) {
-            return res.status(400).send('Não pode apagar: itens emprestados');
-        }
-
-        await sql.query(`
-            INSERT INTO perifericosBackup
-            (TIPO, FABRICANTE, QUANT_TOTAL, QUANT_EMPRESTADO, OBSERVACAO, STATUS)
-            SELECT TIPO, FABRICANTE, QUANT_TOTAL, QUANT_EMPRESTADO, OBSERVACAO, STATUS
-            FROM perifericosDisponiveis
-            WHERE ID = ${id}
-        `);
-
-        await sql.query(`
-            DELETE FROM perifericosDisponiveis
-            WHERE ID = ${id}
-        `);
-
-        res.send('Item movido para backup');
+        res.send('Emprestado');
     } catch (err) {
         res.status(500).send(err.message);
     }
 });
 
 // ===============================
-// ♻️ LISTAR BACKUP
+// DEVOLVER
 // ===============================
-app.get('/backup', async (req, res) => {
+app.post('/devolver/:id', async (req, res) => {
+    const { id } = req.params;
+
     try {
-        const result = await sql.query('SELECT * FROM perifericosBackup');
-        res.json(result.recordset);
+        await pool.query(
+            `UPDATE emprestimos
+             SET status = 'DEVOLVIDO'
+             WHERE idemprestimo = $1`,
+            [id]
+        );
+
+        res.send('Devolvido');
     } catch (err) {
         res.status(500).send(err.message);
     }
 });
 
 // ===============================
-// ♻️ RESTAURAR
+// HISTÓRICO
 // ===============================
-app.post('/backup/:id/restaurar', async (req, res) => {
-    const id = req.params.id;
+app.get('/historico/:id', async (req, res) => {
+    const { id } = req.params;
 
     try {
-        await sql.query(`
-            INSERT INTO perifericosDisponiveis
-            (TIPO, FABRICANTE, QUANT_TOTAL, QUANT_EMPRESTADO, OBSERVACAO, STATUS)
-            SELECT TIPO, FABRICANTE, QUANT_TOTAL, QUANT_EMPRESTADO, OBSERVACAO, STATUS
-            FROM perifericosBackup
-            WHERE ID = ${id}
-        `);
+        const result = await pool.query(
+            `SELECT * FROM historicoperifericos
+             WHERE idperiferico = $1
+             ORDER BY datahora DESC`,
+            [id]
+        );
 
-        await sql.query(`
-            DELETE FROM perifericosBackup WHERE ID = ${id}
-        `);
-
-        res.send('Restaurado com sucesso');
+        res.json(result.rows);
     } catch (err) {
         res.status(500).send(err.message);
     }
@@ -183,68 +147,4 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log(`API rodando na porta ${PORT}`);
-});
-
-
-//🔹 NOVO: endpoint de empréstimo
-
-app.post('/emprestar', async (req, res) => {
-    const { id, usuario, filial } = req.body;
-
-    try {
-        await sql.query(`
-            INSERT INTO EMPRESTIMOS
-            (IDPeriferico, NomeUsuario, DataEmprestimo, Filial, Status)
-            VALUES (${id}, '${usuario}', GETDATE(), '${filial}', 'EMPRESTADO')
-        `);
-
-        res.send('Emprestado');
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
-});
-
-
-//🔹 NOVO: devolver
-
-app.post('/devolver/:id', async (req, res) => {
-    const id = req.params.id;
-
-    try {
-        await sql.query(`
-            UPDATE EMPRESTIMOS
-            SET Status = 'DEVOLVIDO'
-            WHERE IDEmprestimo = ${id}
-        `);
-
-        res.send('Devolvido');
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
-});
-
-// 🔹 NOVO: histórico
-
-app.get('/historico/:id', async (req, res) => {
-    const id = req.params.id;
-
-    try {
-        const result = await sql.query(`
-            SELECT * FROM HistoricoPerifericos
-            WHERE IDPeriferico = ${id}
-            ORDER BY DataHora DESC
-        `);
-
-        res.json(result.recordset);
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
-});
-
-app.get('/', (req, res) => {
-    res.send('API ONLINE 🚀');
-});
-
-app.get('/', (req, res) => {
-    res.send('API ONLINE 🚀');
 });
