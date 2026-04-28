@@ -89,6 +89,23 @@ app.post('/emprestar', async (req, res) => {
     const { id, usuario, filial } = req.body;
 
     try {
+        // 🔹 verifica estoque disponível
+        const check = await pool.query(
+            `SELECT quant_total, quant_emprestado 
+             FROM perifericosDisponiveis 
+             WHERE id = $1`,
+            [id]
+        );
+
+        if (check.rows.length === 0)
+            return res.status(404).send('Periférico não encontrado');
+
+        const { quant_total, quant_emprestado } = check.rows[0];
+
+        if (quant_emprestado >= quant_total)
+            return res.send('Sem estoque disponível');
+
+        // 🔹 insere empréstimo
         await pool.query(
             `INSERT INTO emprestimos
             (idperiferico, nomeusuario, dataemprestimo, filial, status)
@@ -96,7 +113,24 @@ app.post('/emprestar', async (req, res) => {
             [id, usuario, filial]
         );
 
-        res.send('Emprestado');
+        // 🔹 atualiza estoque
+        const novoEmprestado = quant_emprestado + 1;
+
+        let status = 'DISPONÍVEL';
+        if (novoEmprestado === quant_total)
+            status = 'EM FALTA';
+        else if (novoEmprestado > 0)
+            status = 'EMPRESTADO';
+
+        await pool.query(
+            `UPDATE perifericosDisponiveis
+             SET quant_emprestado = $1, status = $2
+             WHERE id = $3`,
+            [novoEmprestado, status, id]
+        );
+
+        res.send('Empréstimo realizado com sucesso');
+
     } catch (err) {
         res.status(500).send(err.message);
     }
