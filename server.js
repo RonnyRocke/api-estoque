@@ -258,6 +258,7 @@ app.get('/emprestimos/:id', async (req, res) => {
                 status AS "Status"
              FROM emprestimos
              WHERE idperiferico = $1
+             AND status = 'EMPRESTADO'
              ORDER BY dataemprestimo DESC`,
             [id]
         );
