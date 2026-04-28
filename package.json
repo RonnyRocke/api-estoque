@@ -7,12 +7,9 @@
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "mssql": "^12.5.0"
+    "pg": "^8.20.0"
   }
 }
