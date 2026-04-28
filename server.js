@@ -148,3 +148,21 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`API rodando na porta ${PORT}`);
 });
+
+// ===============================
+// DELETE
+// ===============================
+app.delete('/perifericos/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        await pool.query(
+            'DELETE FROM perifericosdisponiveis WHERE id = $1',
+            [id]
+        );
+
+        res.send('Deletado com sucesso');
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
+});
