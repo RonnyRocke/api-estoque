@@ -1,3 +1,8 @@
+
+process.on('unhandledRejection', err => {
+    console.error('Erro não tratado:', err);
+});
+
 const express = require('express');
 const sql = require('mssql');
 const cors = require('cors');
@@ -18,8 +23,14 @@ const config = {
     }
 };
 
-// 🔹 CONEXÃO GLOBAL
-sql.connect(config);
+// 🔹 CONEXÃO GLOBAL (SEM DERRUBAR A API)
+sql.connect(config)
+    .then(() => {
+        console.log('Conectado ao SQL Server');
+    })
+    .catch(err => {
+        console.error('Erro ao conectar no banco:', err.message);
+    });
 
 // ===============================
 // 🔹 LISTAR PERIFERICOS
