@@ -244,3 +244,7 @@ app.get('/historico/:id', async (req, res) => {
 app.get('/', (req, res) => {
     res.send('API ONLINE 🚀');
 });
+
+app.get('/', (req, res) => {
+    res.send('API ONLINE 🚀');
+});
