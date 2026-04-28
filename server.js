@@ -240,3 +240,7 @@ app.get('/historico/:id', async (req, res) => {
         res.status(500).send(err.message);
     }
 });
+
+app.get('/', (req, res) => {
+    res.send('API ONLINE 🚀');
+});
