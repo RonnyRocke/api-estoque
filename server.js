@@ -76,6 +76,14 @@ app.put('/perifericos/:id', async (req, res) => {
             [tipo, fabricante, total, observacao, operador, id]
         );
 
+        // 🔥 HISTÓRICO
+        await pool.query(
+            `INSERT INTO historicoperifericos
+             (idperiferico, acao, usuario)
+             VALUES ($1, $2, $3)`,
+            [id, 'ATUALIZACAO', operador]
+        );
+
         res.send('Atualizado com sucesso');
     } catch (err) {
         res.status(500).send(err.message);
@@ -89,7 +97,6 @@ app.post('/emprestar', async (req, res) => {
     const { id, usuario, filial } = req.body;
 
     try {
-        // 🔹 verifica estoque disponível
         const check = await pool.query(
             `SELECT quant_total, quant_emprestado 
              FROM perifericosDisponiveis 
@@ -105,7 +112,6 @@ app.post('/emprestar', async (req, res) => {
         if (quant_emprestado >= quant_total)
             return res.send('Sem estoque disponível');
 
-        // 🔹 insere empréstimo
         await pool.query(
             `INSERT INTO emprestimos
             (idperiferico, nomeusuario, dataemprestimo, filial, status)
@@ -113,7 +119,6 @@ app.post('/emprestar', async (req, res) => {
             [id, usuario, filial]
         );
 
-        // 🔹 atualiza estoque
         const novoEmprestado = quant_emprestado + 1;
 
         let status = 'DISPONÍVEL';
@@ -128,12 +133,14 @@ app.post('/emprestar', async (req, res) => {
              WHERE id = $3`,
             [novoEmprestado, status, id]
         );
+
+        // 🔥 HISTÓRICO
         await pool.query(
-  `INSERT INTO historicoperifericos
-   (idperiferico, acao, usuario)
-   VALUES ($1, $2, $3)`,
-  [id, 'EMPRESTIMO', usuario]
-);
+            `INSERT INTO historicoperifericos
+             (idperiferico, acao, usuario)
+             VALUES ($1, $2, $3)`,
+            [id, 'EMPRESTIMO', usuario]
+        );
 
         res.send('Empréstimo realizado com sucesso');
 
@@ -149,7 +156,6 @@ app.post('/devolver/:id', async (req, res) => {
     const { id } = req.params;
 
     try {
-        // 🔹 pega o empréstimo
         const emp = await pool.query(
             `SELECT idperiferico FROM emprestimos WHERE idemprestimo = $1`,
             [id]
@@ -160,7 +166,6 @@ app.post('/devolver/:id', async (req, res) => {
 
         const idPeriferico = emp.rows[0].idperiferico;
 
-        // 🔹 marca como devolvido
         await pool.query(
             `UPDATE emprestimos 
              SET status = 'DEVOLVIDO' 
@@ -168,15 +173,14 @@ app.post('/devolver/:id', async (req, res) => {
             [id]
         );
 
-await pool.query(
-  `INSERT INTO historicoperifericos
-   (idperiferico, acao, usuario)
-   VALUES ($1, $2, $3)`,
-  [idPeriferico, 'DEVOLUCAO', 'SISTEMA']
-);
-        
+        // 🔥 HISTÓRICO
+        await pool.query(
+            `INSERT INTO historicoperifericos
+             (idperiferico, acao, usuario)
+             VALUES ($1, $2, $3)`,
+            [idPeriferico, 'DEVOLUCAO', 'SISTEMA']
+        );
 
-        // 🔹 recalcula estoque
         const count = await pool.query(
             `SELECT COUNT(*) FROM emprestimos 
              WHERE idperiferico = $1 AND status = 'EMPRESTADO'`,
@@ -198,7 +202,6 @@ await pool.query(
         else if (emprestado > 0)
             status = 'EMPRESTADO';
 
-        // 🔹 atualiza estoque
         await pool.query(
             `UPDATE perifericosDisponiveis
              SET quant_emprestado = $1, status = $2
@@ -212,6 +215,7 @@ await pool.query(
         res.status(500).send(err.message);
     }
 });
+
 // ===============================
 // HISTÓRICO
 // ===============================
@@ -233,13 +237,6 @@ app.get('/historico/:id', async (req, res) => {
 });
 
 // ===============================
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-    console.log(`API rodando na porta ${PORT}`);
-});
-
-// ===============================
 // DELETE
 // ===============================
 app.delete('/perifericos/:id', async (req, res) => {
@@ -251,14 +248,23 @@ app.delete('/perifericos/:id', async (req, res) => {
             [id]
         );
 
+        // 🔥 HISTÓRICO
+        await pool.query(
+            `INSERT INTO historicoperifericos
+             (idperiferico, acao, usuario)
+             VALUES ($1, $2, $3)`,
+            [id, 'DELETE', 'SISTEMA']
+        );
+
         res.send('Deletado com sucesso');
+
     } catch (err) {
         res.status(500).send(err.message);
     }
 });
 
 // ===============================
-// LISTAR EMPRÉSTIMOS POR PERIFÉRICO
+// EMPRÉSTIMOS POR PERIFÉRICO
 // ===============================
 app.get('/emprestimos/:id', async (req, res) => {
     const { id } = req.params;
@@ -281,4 +287,11 @@ app.get('/emprestimos/:id', async (req, res) => {
     } catch (err) {
         res.status(500).send(err.message);
     }
+});
+
+// ===============================
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log(`API rodando na porta ${PORT}`);
 });
