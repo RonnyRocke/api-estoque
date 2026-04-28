@@ -128,6 +128,12 @@ app.post('/emprestar', async (req, res) => {
              WHERE id = $3`,
             [novoEmprestado, status, id]
         );
+        await pool.query(
+  `INSERT INTO historicoperifericos
+   (idperiferico, acao, usuario)
+   VALUES ($1, $2, $3)`,
+  [id, 'EMPRESTIMO', usuario]
+);
 
         res.send('Empréstimo realizado com sucesso');
 
@@ -161,6 +167,14 @@ app.post('/devolver/:id', async (req, res) => {
              WHERE idemprestimo = $1`,
             [id]
         );
+
+await pool.query(
+  `INSERT INTO historicoperifericos
+   (idperiferico, acao, usuario)
+   VALUES ($1, $2, $3)`,
+  [idPeriferico, 'DEVOLUCAO', 'SISTEMA']
+);
+        
 
         // 🔹 recalcula estoque
         const count = await pool.query(
