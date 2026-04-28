@@ -12,7 +12,7 @@ app.use(cors());
 
 // 🔥 CONEXÃO NEON
 const pool = new Pool({
-    connectionString: 'COLE_AQUI_SUA_STRING_DO_NEON',
+    connectionString: 'postgresql://neondb_owner:npg_Jn0VEQd8lHKe@ep-sweet-night-acdeoik9-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require',
     ssl: {
         rejectUnauthorized: false
     }
