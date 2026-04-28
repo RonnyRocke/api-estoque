@@ -143,19 +143,61 @@ app.post('/devolver/:id', async (req, res) => {
     const { id } = req.params;
 
     try {
+        // 🔹 pega o empréstimo
+        const emp = await pool.query(
+            `SELECT idperiferico FROM emprestimos WHERE idemprestimo = $1`,
+            [id]
+        );
+
+        if (emp.rows.length === 0)
+            return res.status(404).send('Empréstimo não encontrado');
+
+        const idPeriferico = emp.rows[0].idperiferico;
+
+        // 🔹 marca como devolvido
         await pool.query(
-            `UPDATE emprestimos
-             SET status = 'DEVOLVIDO'
+            `UPDATE emprestimos 
+             SET status = 'DEVOLVIDO' 
              WHERE idemprestimo = $1`,
             [id]
         );
 
-        res.send('Devolvido');
+        // 🔹 recalcula estoque
+        const count = await pool.query(
+            `SELECT COUNT(*) FROM emprestimos 
+             WHERE idperiferico = $1 AND status = 'EMPRESTADO'`,
+            [idPeriferico]
+        );
+
+        const emprestado = parseInt(count.rows[0].count);
+
+        const totalRes = await pool.query(
+            `SELECT quant_total FROM perifericosDisponiveis WHERE id = $1`,
+            [idPeriferico]
+        );
+
+        const total = totalRes.rows[0].quant_total;
+
+        let status = 'DISPONÍVEL';
+        if (emprestado === total)
+            status = 'EM FALTA';
+        else if (emprestado > 0)
+            status = 'EMPRESTADO';
+
+        // 🔹 atualiza estoque
+        await pool.query(
+            `UPDATE perifericosDisponiveis
+             SET quant_emprestado = $1, status = $2
+             WHERE id = $3`,
+            [emprestado, status, idPeriferico]
+        );
+
+        res.send('Devolvido com sucesso');
+
     } catch (err) {
         res.status(500).send(err.message);
     }
 });
-
 // ===============================
 // HISTÓRICO
 // ===============================
