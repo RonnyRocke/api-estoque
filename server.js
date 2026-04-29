@@ -76,12 +76,25 @@ app.put('/perifericos/:id', async (req, res) => {
             [tipo, fabricante, total, observacao, operador, id]
         );
 
-        // 🔥 HISTÓRICO
+        // 🔥 HISTÓRICO COMPLETO
         await pool.query(
             `INSERT INTO historicoperifericos
-             (idperiferico, acao, usuario)
-             VALUES ($1, $2, $3)`,
-            [id, 'ATUALIZACAO', operador]
+            (idperiferico, acao, tipo, fabricante, quanttotal, quantemprestado, status, observacao, operador, usuario, filial)
+            SELECT 
+                id,
+                'ATUALIZACAO',
+                tipo,
+                fabricante,
+                quant_total,
+                quant_emprestado,
+                status,
+                observacao,
+                operador,
+                $2,
+                'N/A'
+            FROM perifericosDisponiveis
+            WHERE id = $1`,
+            [id, operador]
         );
 
         res.send('Atualizado com sucesso');
@@ -98,18 +111,16 @@ app.post('/emprestar', async (req, res) => {
 
     try {
         const check = await pool.query(
-            `SELECT quant_total, quant_emprestado 
-             FROM perifericosDisponiveis 
-             WHERE id = $1`,
+            `SELECT * FROM perifericosDisponiveis WHERE id = $1`,
             [id]
         );
 
         if (check.rows.length === 0)
             return res.status(404).send('Periférico não encontrado');
 
-        const { quant_total, quant_emprestado } = check.rows[0];
+        const p = check.rows[0];
 
-        if (quant_emprestado >= quant_total)
+        if (p.quant_emprestado >= p.quant_total)
             return res.send('Sem estoque disponível');
 
         await pool.query(
@@ -119,27 +130,38 @@ app.post('/emprestar', async (req, res) => {
             [id, usuario, filial]
         );
 
-        const novoEmprestado = quant_emprestado + 1;
+        const novo = p.quant_emprestado + 1;
 
         let status = 'DISPONÍVEL';
-        if (novoEmprestado === quant_total)
-            status = 'EM FALTA';
-        else if (novoEmprestado > 0)
-            status = 'EMPRESTADO';
+        if (novo === p.quant_total) status = 'EM FALTA';
+        else if (novo > 0) status = 'EMPRESTADO';
 
         await pool.query(
             `UPDATE perifericosDisponiveis
              SET quant_emprestado = $1, status = $2
              WHERE id = $3`,
-            [novoEmprestado, status, id]
+            [novo, status, id]
         );
 
-        // 🔥 HISTÓRICO
+        // 🔥 HISTÓRICO COMPLETO
         await pool.query(
             `INSERT INTO historicoperifericos
-             (idperiferico, acao, usuario)
-             VALUES ($1, $2, $3)`,
-            [id, 'EMPRESTIMO', usuario]
+            (idperiferico, acao, tipo, fabricante, quanttotal, quantemprestado, status, observacao, operador, usuario, filial)
+            SELECT 
+                id,
+                'EMPRESTIMO',
+                tipo,
+                fabricante,
+                quant_total,
+                quant_emprestado,
+                status,
+                observacao,
+                operador,
+                $2,
+                $3
+            FROM perifericosDisponiveis
+            WHERE id = $1`,
+            [id, usuario, filial]
         );
 
         res.send('Empréstimo realizado com sucesso');
@@ -173,14 +195,6 @@ app.post('/devolver/:id', async (req, res) => {
             [id]
         );
 
-        // 🔥 HISTÓRICO
-        await pool.query(
-            `INSERT INTO historicoperifericos
-             (idperiferico, acao, usuario)
-             VALUES ($1, $2, $3)`,
-            [idPeriferico, 'DEVOLUCAO', 'SISTEMA']
-        );
-
         const count = await pool.query(
             `SELECT COUNT(*) FROM emprestimos 
              WHERE idperiferico = $1 AND status = 'EMPRESTADO'`,
@@ -190,23 +204,42 @@ app.post('/devolver/:id', async (req, res) => {
         const emprestado = parseInt(count.rows[0].count);
 
         const totalRes = await pool.query(
-            `SELECT quant_total FROM perifericosDisponiveis WHERE id = $1`,
+            `SELECT * FROM perifericosDisponiveis WHERE id = $1`,
             [idPeriferico]
         );
 
-        const total = totalRes.rows[0].quant_total;
+        const p = totalRes.rows[0];
 
         let status = 'DISPONÍVEL';
-        if (emprestado === total)
-            status = 'EM FALTA';
-        else if (emprestado > 0)
-            status = 'EMPRESTADO';
+        if (emprestado === p.quant_total) status = 'EM FALTA';
+        else if (emprestado > 0) status = 'EMPRESTADO';
 
         await pool.query(
             `UPDATE perifericosDisponiveis
              SET quant_emprestado = $1, status = $2
              WHERE id = $3`,
             [emprestado, status, idPeriferico]
+        );
+
+        // 🔥 HISTÓRICO COMPLETO
+        await pool.query(
+            `INSERT INTO historicoperifericos
+            (idperiferico, acao, tipo, fabricante, quanttotal, quantemprestado, status, observacao, operador, usuario, filial)
+            SELECT 
+                id,
+                'DEVOLUCAO',
+                tipo,
+                fabricante,
+                quant_total,
+                quant_emprestado,
+                status,
+                observacao,
+                operador,
+                'SISTEMA',
+                'N/A'
+            FROM perifericosDisponiveis
+            WHERE id = $1`,
+            [idPeriferico]
         );
 
         res.send('Devolvido com sucesso');
@@ -217,69 +250,28 @@ app.post('/devolver/:id', async (req, res) => {
 });
 
 // ===============================
-// HISTÓRICO
+// HISTÓRICO (COM JOIN)
 // ===============================
 app.get('/historico/:id', async (req, res) => {
     const { id } = req.params;
 
     try {
         const result = await pool.query(
-            `SELECT * FROM historicoperifericos
-             WHERE idperiferico = $1
-             ORDER BY datahora DESC`,
-            [id]
-        );
-
-        res.json(result.rows);
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
-});
-
-// ===============================
-// DELETE
-// ===============================
-app.delete('/perifericos/:id', async (req, res) => {
-    const { id } = req.params;
-
-    try {
-        await pool.query(
-            'DELETE FROM perifericosdisponiveis WHERE id = $1',
-            [id]
-        );
-
-        // 🔥 HISTÓRICO
-        await pool.query(
-            `INSERT INTO historicoperifericos
-             (idperiferico, acao, usuario)
-             VALUES ($1, $2, $3)`,
-            [id, 'DELETE', 'SISTEMA']
-        );
-
-        res.send('Deletado com sucesso');
-
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
-});
-
-// ===============================
-// EMPRÉSTIMOS POR PERIFÉRICO
-// ===============================
-app.get('/emprestimos/:id', async (req, res) => {
-    const { id } = req.params;
-
-    try {
-        const result = await pool.query(
             `SELECT 
-                idemprestimo AS id,
-                nomeusuario AS "NomeUsuario",
-                filial AS "Filial",
-                status AS "Status"
-             FROM emprestimos
-             WHERE idperiferico = $1
-             AND status = 'EMPRESTADO'
-             ORDER BY dataemprestimo DESC`,
+                h.acao,
+                h.tipo,
+                h.fabricante,
+                h.quanttotal,
+                h.quantemprestado,
+                h.status,
+                h.observacao,
+                h.operador,
+                h.usuario,
+                h.filial,
+                h.datahora
+             FROM historicoperifericos h
+             WHERE h.idperiferico = $1
+             ORDER BY h.datahora DESC`,
             [id]
         );
 
