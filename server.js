@@ -287,3 +287,25 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`API rodando na porta ${PORT}`);
 });
+
+// ===============================
+// BUSCAR EMPRÉSTIMOS POR PERIFÉRICO
+// ===============================
+app.get('/emprestimos/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await pool.query(
+            `SELECT * FROM emprestimos 
+             WHERE idperiferico = $1 
+             ORDER BY dataemprestimo DESC`,
+            [id]
+        );
+
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
+});
+
+
