@@ -60,11 +60,25 @@ app.post('/perifericos', async (req, res) => {
 // ===============================
 // ATUALIZAR
 // ===============================
+
+// PUT PERIFERICOS
+
 app.put('/perifericos/:id', async (req, res) => {
     const { id } = req.params;
     const { tipo, fabricante, total, observacao, operador } = req.body;
 
     try {
+        // 🔥 VERIFICA SE EXISTE
+        const check = await pool.query(
+            'SELECT * FROM perifericosDisponiveis WHERE id = $1',
+            [id]
+        );
+
+        if (check.rows.length === 0) {
+            return res.status(404).send('ID não encontrado');
+        }
+
+        // 🔥 ATUALIZA
         await pool.query(
             `UPDATE perifericosDisponiveis
              SET tipo = $1,
@@ -76,28 +90,16 @@ app.put('/perifericos/:id', async (req, res) => {
             [tipo, fabricante, total, observacao, operador, id]
         );
 
-        // 🔥 HISTÓRICO COMPLETO
+        // 🔥 HISTÓRICO SEGURO
         await pool.query(
             `INSERT INTO historicoperifericos
             (idperiferico, acao, tipo, fabricante, quanttotal, quantemprestado, status, observacao, operador, usuario, filial)
-            SELECT 
-                id,
-                'ATUALIZACAO',
-                tipo,
-                fabricante,
-                quant_total,
-                quant_emprestado,
-                status,
-                observacao,
-                operador,
-                $2,
-                'N/A'
-            FROM perifericosDisponiveis
-            WHERE id = $1`,
-            [id, operador]
+            VALUES ($1, 'ATUALIZACAO', $2, $3, $4, 0, 'N/A', $5, $6, $6, 'N/A')`,
+            [id, tipo, fabricante, total, observacao, operador]
         );
 
         res.send('Atualizado com sucesso');
+
     } catch (err) {
         res.status(500).send(err.message);
     }
