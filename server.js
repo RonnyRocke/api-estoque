@@ -309,3 +309,21 @@ app.get('/emprestimos/:id', async (req, res) => {
 });
 
 
+app.get('/perifericos/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await pool.query(
+            'SELECT * FROM perifericosDisponiveis WHERE id = $1',
+            [id]
+        );
+
+        if (result.rows.length === 0)
+            return res.status(404).send('Não encontrado');
+
+        res.json(result.rows[0]);
+
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
+});
